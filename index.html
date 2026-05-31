@@ -8278,6 +8278,11 @@
                     <label class="form-label">LinkedIn / Portfolio</label>
                     <input type="url" name="linkedin" placeholder="https://..." class="input-premium">
                 </div>
+                <!-- Honeypot: hidden from humans; bots that fill it are silently dropped -->
+                <div aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden">
+                    <label>Company Website</label>
+                    <input type="text" name="company_website" tabindex="-1" autocomplete="off">
+                </div>
                 <button type="submit"
                     class="btn-premium flex-shrink-0 mt-2 text-core hover:text-white font-display font-bold px-8 py-4 uppercase tracking-wider w-full text-sm">
                     Submit Application
@@ -8450,8 +8455,18 @@
         // IMPORTANT: Replace this with the deployed Google Apps Script Web App URL
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzSEVPo8mnJJiZnqByEaMaQtaqZaQpLM0he4FiPiS80zmJonqnlfUBdvhuNh7qe5VrJww/exec';
         
-        // Apply Form Script URL (for Join the Team form)
-        const APPLY_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby9PESgAB9jfLH8FtF6Ux2YbCgWj4XlHDDw3_iSMTT3ni-QZpe_phuhETv66H91hM-V/exec';
+        // Apply Form Script URL (for Join the Team form).
+        // Primary source is the admin "Forms & Settings" (settings.json -> applyFormUrl), loaded below.
+        // The hardcoded value is only a fallback if /api/settings is unavailable.
+        let APPLY_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhMLEygjZeQ-gnzD522FysCz9iQUxHNsORgzY82FgGGBUhNQTUi8BuQRdjNNeOasz30A/exec';
+        fetch('/api/settings')
+            .then(res => res.json())
+            .then(settings => {
+                if (settings && typeof settings.applyFormUrl === 'string' && settings.applyFormUrl.indexOf('http') === 0) {
+                    APPLY_SCRIPT_URL = settings.applyFormUrl;
+                }
+            })
+            .catch(() => { /* keep fallback */ });
         
         const consultModal = document.getElementById('consultModal');
         const consultModalContent = document.getElementById('consultModalContent');
@@ -8836,6 +8851,16 @@
                     linkedin: formData.get('linkedin') || '',
                     timestamp: new Date().toISOString()
                 };
+
+                // Honeypot: bots fill the hidden field — silently "succeed" without sending anything.
+                if (formData.get('company_website')) {
+                    const successEl = document.getElementById('formSuccess');
+                    if (successEl) {
+                        successEl.classList.add('active');
+                        setTimeout(() => { closeApplyModal(); applyForm.reset(); }, 2500);
+                    }
+                    return;
+                }
                 
                 // Track job application submission
                 trackEvent('job_application_submit', {
@@ -8846,15 +8871,10 @@
                     value: 1
                 });
                 
-                // Check if backend is configured
-                if (APPLY_SCRIPT_URL === 'INSERT_YOUR_APPLY_SCRIPT_URL_HERE') {
-                    console.warn('Apply form backend not configured. Set APPLY_SCRIPT_URL.');
-                    // Show success message anyway for demo
-                    const successEl = document.getElementById('formSuccess');
-                    if (successEl) {
-                        successEl.classList.add('active');
-                        setTimeout(() => closeApplyModal(), 2500);
-                    }
+                // Guard: backend not configured yet (no real success faked).
+                if (!APPLY_SCRIPT_URL || APPLY_SCRIPT_URL === 'PASTE_NEW_APPLY_EXEC_URL_HERE') {
+                    console.error('Apply form backend not configured (applyFormUrl missing).');
+                    alert('The application form is temporarily unavailable. Please email us at admin@workeron.agency.');
                     return;
                 }
                 
@@ -8866,29 +8886,35 @@
                     submitBtn.textContent = 'Sending...';
                 }
                 
-                // Send data to backend
+                // Send to the Apps Script web app. text/plain avoids a CORS preflight on
+                // Apps Script, and (unlike no-cors) lets us READ the JSON response so real
+                // failures surface instead of showing a fake success.
                 fetch(APPLY_SCRIPT_URL, {
                     method: 'POST',
-                    mode: 'no-cors',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'text/plain;charset=utf-8',
                     },
                     body: JSON.stringify(data)
                 })
-                .then(() => {
-                    // Show success message
-                    const successEl = document.getElementById('formSuccess');
-                    if (successEl) {
-                        successEl.classList.add('active');
-                        setTimeout(() => {
-                            closeApplyModal();
-                            applyForm.reset();
-                        }, 2500);
+                .then(res => res.json())
+                .then(result => {
+                    if (result && result.success) {
+                        const successEl = document.getElementById('formSuccess');
+                        if (successEl) {
+                            successEl.classList.add('active');
+                            setTimeout(() => {
+                                closeApplyModal();
+                                applyForm.reset();
+                            }, 2500);
+                        }
+                    } else {
+                        const reason = (result && result.error) ? result.error : 'Unknown error';
+                        alert('We could not submit your application (' + reason + '). Please try again or email us directly at admin@workeron.agency');
                     }
                 })
                 .catch(error => {
                     console.error('Error submitting application:', error);
-                    alert('There was an error submitting your application. Please try again or email us directly at admin@workeron.agency');
+                    alert('Network error while submitting your application. Please try again or email us directly at admin@workeron.agency');
                 })
                 .finally(() => {
                     // Re-enable submit button

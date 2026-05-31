@@ -1,7 +1,7 @@
 {
   "contactEmail": "admin@workeron.agency",
   "consultationFormUrl": "https://script.google.com/macros/s/AKfycbzHmnmho93fEV0XAmN0ZM0zMyA596O9aQiBf5W8T4ssKxuubtQCtO3chGpxY2sl5xMETw/exec",
-  "applyFormUrl": "https://script.google.com/macros/s/AKfycbxQDP0yGFR2KqyIEzAQhqPgKnB4g61edkTr_wcqgJKBX83Tbkc4YlZ0I_lX4jEvvhXG/exec",
+  "applyFormUrl": "https://script.google.com/macros/s/AKfycbzhMLEygjZeQ-gnzD522FysCz9iQUxHNsORgzY82FgGGBUhNQTUi8BuQRdjNNeOasz30A/exec",
   "applyFormFields": {
     "namePlaceholder": "Full Name",
     "emailPlaceholder": "Email Address",
