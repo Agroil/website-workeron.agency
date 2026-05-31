@@ -8347,6 +8347,11 @@
                             <label class="form-label flex justify-between">Brief description <span class="text-white/20 lowercase normal-case">(optional)</span></label>
                             <textarea id="consultMessage" placeholder="What are your current operational bottlenecks?" class="input-premium" rows="2" style="height: auto; resize: none;"></textarea>
                         </div>
+                        <!-- Honeypot: hidden from humans; bots that fill it are silently dropped -->
+                        <div aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden">
+                            <label>Website</label>
+                            <input type="text" id="consultWebsite" name="website" tabindex="-1" autocomplete="off">
+                        </div>
                         <button type="submit" class="btn-premium flex-shrink-0 mt-4 text-core hover:text-white font-display font-bold px-8 py-4 uppercase tracking-wider w-full text-sm">
                             Next: Select Date
                         </button>
@@ -8459,14 +8464,19 @@
         // Primary source is the admin "Forms & Settings" (settings.json -> applyFormUrl), loaded below.
         // The hardcoded value is only a fallback if /api/settings is unavailable.
         let APPLY_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhMLEygjZeQ-gnzD522FysCz9iQUxHNsORgzY82FgGGBUhNQTUi8BuQRdjNNeOasz30A/exec';
+        // Contact-form (consultation) leads endpoint — also admin-controlled (settings.json -> contactLeadsFormUrl).
+        let CONTACT_LEADS_URL = 'https://script.google.com/macros/s/AKfycbyVUYZ4eyWEnefarqqYUVNDznuhOVRlREuSHWASw9TpGS9oJNoIQQOJ2iGWmtizyfFgUw/exec';
         fetch('/api/settings')
             .then(res => res.json())
             .then(settings => {
                 if (settings && typeof settings.applyFormUrl === 'string' && settings.applyFormUrl.indexOf('http') === 0) {
                     APPLY_SCRIPT_URL = settings.applyFormUrl;
                 }
+                if (settings && typeof settings.contactLeadsFormUrl === 'string' && settings.contactLeadsFormUrl.indexOf('http') === 0) {
+                    CONTACT_LEADS_URL = settings.contactLeadsFormUrl;
+                }
             })
-            .catch(() => { /* keep fallback */ });
+            .catch(() => { /* keep fallbacks */ });
         
         const consultModal = document.getElementById('consultModal');
         const consultModalContent = document.getElementById('consultModalContent');
@@ -8550,6 +8560,28 @@
             consultState.name = document.getElementById('consultName').value;
             consultState.email = document.getElementById('consultEmail').value;
             consultState.message = document.getElementById('consultMessage').value;
+
+            // Capture the lead on every Step-1 submit (independent of whether the booking is
+            // completed) → "all leads" sheet. Best-effort, non-blocking: never disrupts the flow.
+            const consultHoneypot = document.getElementById('consultWebsite');
+            if (CONTACT_LEADS_URL && CONTACT_LEADS_URL.indexOf('http') === 0 && !(consultHoneypot && consultHoneypot.value)) {
+                try {
+                    fetch(CONTACT_LEADS_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            name: consultState.name,
+                            email: consultState.email,
+                            message: consultState.message,
+                            source: 'contact_consultation',
+                            timestamp: new Date().toISOString()
+                        })
+                    }).catch(err => console.error('Lead capture failed:', err));
+                } catch (err) {
+                    console.error('Lead capture error:', err);
+                }
+            }
+
             goToConsultStep(2);
         });
 
