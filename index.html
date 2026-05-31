@@ -8457,8 +8457,9 @@
 
         /* ─── CONSULTATION MODAL LOGIC ─── */
         
-        // IMPORTANT: Replace this with the deployed Google Apps Script Web App URL
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzSEVPo8mnJJiZnqByEaMaQtaqZaQpLM0he4FiPiS80zmJonqnlfUBdvhuNh7qe5VrJww/exec';
+        // Consultation booking endpoint. Primary source = admin "Forms & Settings"
+        // (settings.json -> consultationFormUrl), loaded below; hardcoded value is only a fallback.
+        let APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzBpoLPg-eusMiZnAfB_Nxl7zzc_gqfuEoxn8Kh_aTR3yQdrtgaDiFFM5RRDFImz2GS/exec';
         
         // Apply Form Script URL (for Join the Team form).
         // Primary source is the admin "Forms & Settings" (settings.json -> applyFormUrl), loaded below.
@@ -8474,6 +8475,9 @@
                 }
                 if (settings && typeof settings.contactLeadsFormUrl === 'string' && settings.contactLeadsFormUrl.indexOf('http') === 0) {
                     CONTACT_LEADS_URL = settings.contactLeadsFormUrl;
+                }
+                if (settings && typeof settings.consultationFormUrl === 'string' && settings.consultationFormUrl.indexOf('http') === 0) {
+                    APPS_SCRIPT_URL = settings.consultationFormUrl;
                 }
             })
             .catch(() => { /* keep fallbacks */ });
