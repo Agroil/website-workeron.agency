@@ -62,16 +62,44 @@ Google account, then paste the `/exec` URL into the admin → Forms & Settings).
 - `contactLeadsFormUrl` → `https://script.google.com/macros/s/AKfycbyVUYZ4eyWEnefarqqYUVNDznuhOVRlREuSHWASw9TpGS9oJNoIQQOJ2iGWmtizyfFgUw/exec`
 - `consultationFormUrl` → `https://script.google.com/macros/s/AKfycbzBpoLPg-eusMiZnAfB_Nxl7zzc_gqfuEoxn8Kh_aTR3yQdrtgaDiFFM5RRDFImz2GS/exec`
 
-### Consultation booking specifics (`consultation-booking.Code.gs`)
+### Request Consultation — form ↔ booking script
 
-- Contract: `GET ?action=slots&date=YYYY-MM-DD` → `{date,slots:[{start,end,iso}]}`;
-  `POST {action:"book", name,email,message,date,startTime}` → `{success, meetLink}`.
-- Slots: **weekdays 11:30–17:00, Asia/Bangkok (+07:00), 30-min**, availability-checked against the host calendar.
-- On booking it creates a Calendar event **with a Google Meet link** and invites the requester **plus Max**
-  (`max.gera@workeron.ai`), sending invites automatically (`sendUpdates:'all'`).
-- Deployed under **`d.sadchikov@workeron.ai`** (= organizer / host calendar). Requires the project time zone set
-  to **GMT+07:00** and the advanced **Calendar** service enabled.
-- To change who is auto-added to every call, edit `ALWAYS_GUESTS` at the top of the script.
+**Form (frontend, `index.html`).** The "Request Consultation" modal (`#consultModal`) is multi-step:
+
+1. **Step 1 — contact info** (`#consultInfoForm`): `consultName` (Full Name, required), `consultEmail`
+   (Work Email, required), `consultMessage` (Brief description, optional) + a hidden honeypot (`website`).
+   On submit it (a) **best-effort posts the lead** to `contactLeadsFormUrl` (see *Contact leads* above — so every
+   lead is captured even if the booking isn't completed) and (b) advances to date selection.
+2. **Step 2 — date:** a calendar (weekdays, next ~30 days). Picking a date does
+   `GET {consultationFormUrl}?action=slots&date=YYYY-MM-DD`.
+3. **Step 3 — time + confirm:** the user picks a returned slot and confirms, which does
+   `POST {consultationFormUrl}` with `{action:"book", name, email, message, date, startTime}`.
+
+The booking endpoint is read at runtime from `/api/settings → consultationFormUrl` (hardcoded fallback in
+`index.html`). Requests are `text/plain` (no CORS preflight); responses are JSON.
+
+**Script that processes it — [`apps-script/consultation-booking.Code.gs`](./apps-script/consultation-booking.Code.gs)**
+(deployed Web app; its `/exec` is the `consultationFormUrl` above — the source of truth for slots + bookings):
+
+- `GET ?action=slots&date=YYYY-MM-DD` → `{ "date", "slots": [ { "start":"HH:mm", "end":"HH:mm", "iso":"…+07:00" } ] }`.
+  Slots are **weekdays 11:30–17:00, Asia/Bangkok (+07:00), 30-min**, with past times and any slot overlapping an
+  existing event on the host calendar removed. Weekends / past dates return an empty `slots` array + a `message`.
+- `POST { action:"book", name, email, message, date, startTime }` → `{ "success": true, "meetLink": "…" }`
+  (or `{ success:false, error }`). It re-validates the slot is still free, then creates a **Google Calendar event**
+  with a **Google Meet** link and invites **the requester + Max (`max.gera@workeron.ai`)**, sending the calendar
+  invites automatically (`sendUpdates:'all'`) so everyone is notified.
+- **Host / organizer:** the event is created on the calendar of the account that **deployed** the script
+  (currently **`d.sadchikov@workeron.ai`**, `CALENDAR_ID = 'primary'`); Max + the requester are guests.
+- **Config (constants at the top of the script):** `ALWAYS_GUESTS` (who is auto-added to every call — Max),
+  `WORK_START` / `WORK_END` / `SLOT_MINUTES` (hours + granularity), `TIMEZONE`, and `CALENDAR_ID` (set to a
+  specific Google Calendar ID if calls should live on a shared calendar instead of the deployer's primary).
+- **Deploy requirements:** the Apps Script project needs the advanced **Calendar** service enabled and its
+  **time zone set to GMT+07:00** (the slot math depends on it). To update it, use **Manage deployments → Edit →
+  New version** (never "New deployment" — that mints a new `/exec` and breaks the form; see the ⚠️ above).
+
+> History: the original booking script's source was lost (an external deployment). This `Code.gs` is a faithful
+> rewrite that additionally adds Max to every call. The form had also been pointing at a dead `/exec` (404) —
+> fixed by sourcing the URL from `consultationFormUrl`. (ClickUp 86exqrc2m.)
 
 ---
 
