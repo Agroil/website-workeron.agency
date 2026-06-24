@@ -13,8 +13,11 @@
 var SHEET_ID = '1jEXRFs4YSRzPmhUulrCq2ST9_7Qw_thwr8FRhzf1Z3Y';
 var TAB_GID = 115747773;          // "Applications" tab
 var TAB_NAME = 'Applications';    // fallback if the gid ever changes
-var HEADERS = ['Timestamp', 'Name', 'Email', 'Role', 'LinkedIn / Portfolio', 'Status'];
+// SHARED SHEET: 1jEXRFs4… "Applications" is ALSO written by workhold.ai (apply-consult.gs).
+// The column layout is a CONTRACT — change columns ONLY in sync on BOTH scripts + the sheet header row.
+var HEADERS = ['Timestamp', 'Name', 'Email', 'Role', 'LinkedIn / Portfolio', 'Status', 'Source'];
 var DEFAULT_STATUS = 'New';
+var SOURCE = 'workeron.agency'; // Source column = which site the application came from (vs 'workhold.ai')
 
 function getTargetSheet_() {
   var ss = SpreadsheetApp.openById(SHEET_ID);
@@ -58,8 +61,8 @@ function doPost(e) {
     }
 
     var ts = data.timestamp ? new Date(data.timestamp) : new Date();
-    // Columns: Timestamp | Name | Email | Role | LinkedIn / Portfolio | Status
-    sheet.appendRow([ts, name, email, role, linkedin, DEFAULT_STATUS]);
+    // Columns: Timestamp | Name | Email | Role | LinkedIn / Portfolio | Status | Source
+    sheet.appendRow([ts, name, email, role, linkedin, DEFAULT_STATUS, SOURCE]);
 
     return jsonOutput_({ success: true });
   } catch (err) {

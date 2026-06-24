@@ -16,7 +16,10 @@
  */
 var SHEET_ID = '136C-X2nf6EiDIInZtMoPbgMZaJ3vUVj4DO_FRKDulPs';
 var TAB_GID = 0;
-var HEADERS = ['№', 'Date', 'Full Name', 'Work Email', 'Brief description'];
+// SHARED SHEET: 136C… (gid 0) is ALSO written by workhold.ai (contact-sheet.gs).
+// The column layout is a CONTRACT — change columns ONLY in sync on BOTH scripts + the sheet header row.
+var HEADERS = ['№', 'Date', 'Full Name', 'Work Email', 'Brief description', 'Source'];
+var SOURCE = 'workeron.agency'; // Source column = which site the lead came from (vs 'workhold.ai')
 
 function getTargetSheet_() {
   var ss = SpreadsheetApp.openById(SHEET_ID);
@@ -61,8 +64,8 @@ function doPost(e) {
     // № = running sequence (header is row 1 → first lead gets 1, then 2, 3 …)
     var num = sheet.getLastRow();
     var ts = data.timestamp ? new Date(data.timestamp) : new Date();
-    // Columns: № | Date | Full Name | Work Email | Brief description
-    sheet.appendRow([num, ts, name, email, message]);
+    // Columns: № | Date | Full Name | Work Email | Brief description | Source
+    sheet.appendRow([num, ts, name, email, message, SOURCE]);
 
     return jsonOutput_({ success: true });
   } catch (err) {
