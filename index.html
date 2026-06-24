@@ -8278,6 +8278,11 @@
                     <label class="form-label">LinkedIn / Portfolio</label>
                     <input type="url" name="linkedin" placeholder="https://..." class="input-premium">
                 </div>
+                <!-- Honeypot: hidden from humans; bots that fill it are silently dropped -->
+                <div aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden">
+                    <label>Company Website</label>
+                    <input type="text" name="company_website" tabindex="-1" autocomplete="off">
+                </div>
                 <button type="submit"
                     class="btn-premium flex-shrink-0 mt-2 text-core hover:text-white font-display font-bold px-8 py-4 uppercase tracking-wider w-full text-sm">
                     Submit Application
@@ -8341,6 +8346,11 @@
                         <div class="form-field">
                             <label class="form-label flex justify-between">Brief description <span class="text-white/20 lowercase normal-case">(optional)</span></label>
                             <textarea id="consultMessage" placeholder="What are your current operational bottlenecks?" class="input-premium" rows="2" style="height: auto; resize: none;"></textarea>
+                        </div>
+                        <!-- Honeypot: hidden from humans; bots that fill it are silently dropped -->
+                        <div aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden">
+                            <label>Website</label>
+                            <input type="text" id="consultWebsite" name="website" tabindex="-1" autocomplete="off">
                         </div>
                         <button type="submit" class="btn-premium flex-shrink-0 mt-4 text-core hover:text-white font-display font-bold px-8 py-4 uppercase tracking-wider w-full text-sm">
                             Next: Select Date
@@ -8447,11 +8457,30 @@
 
         /* ─── CONSULTATION MODAL LOGIC ─── */
         
-        // IMPORTANT: Replace this with the deployed Google Apps Script Web App URL
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzSEVPo8mnJJiZnqByEaMaQtaqZaQpLM0he4FiPiS80zmJonqnlfUBdvhuNh7qe5VrJww/exec';
+        // Consultation booking endpoint. Primary source = admin "Forms & Settings"
+        // (settings.json -> consultationFormUrl), loaded below; hardcoded value is only a fallback.
+        let APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzBpoLPg-eusMiZnAfB_Nxl7zzc_gqfuEoxn8Kh_aTR3yQdrtgaDiFFM5RRDFImz2GS/exec';
         
-        // Apply Form Script URL (for Join the Team form)
-        const APPLY_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby9PESgAB9jfLH8FtF6Ux2YbCgWj4XlHDDw3_iSMTT3ni-QZpe_phuhETv66H91hM-V/exec';
+        // Apply Form Script URL (for Join the Team form).
+        // Primary source is the admin "Forms & Settings" (settings.json -> applyFormUrl), loaded below.
+        // The hardcoded value is only a fallback if /api/settings is unavailable.
+        let APPLY_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhMLEygjZeQ-gnzD522FysCz9iQUxHNsORgzY82FgGGBUhNQTUi8BuQRdjNNeOasz30A/exec';
+        // Contact-form (consultation) leads endpoint — also admin-controlled (settings.json -> contactLeadsFormUrl).
+        let CONTACT_LEADS_URL = 'https://script.google.com/macros/s/AKfycbyVUYZ4eyWEnefarqqYUVNDznuhOVRlREuSHWASw9TpGS9oJNoIQQOJ2iGWmtizyfFgUw/exec';
+        fetch('/api/settings')
+            .then(res => res.json())
+            .then(settings => {
+                if (settings && typeof settings.applyFormUrl === 'string' && settings.applyFormUrl.indexOf('http') === 0) {
+                    APPLY_SCRIPT_URL = settings.applyFormUrl;
+                }
+                if (settings && typeof settings.contactLeadsFormUrl === 'string' && settings.contactLeadsFormUrl.indexOf('http') === 0) {
+                    CONTACT_LEADS_URL = settings.contactLeadsFormUrl;
+                }
+                if (settings && typeof settings.consultationFormUrl === 'string' && settings.consultationFormUrl.indexOf('http') === 0) {
+                    APPS_SCRIPT_URL = settings.consultationFormUrl;
+                }
+            })
+            .catch(() => { /* keep fallbacks */ });
         
         const consultModal = document.getElementById('consultModal');
         const consultModalContent = document.getElementById('consultModalContent');
@@ -8535,6 +8564,28 @@
             consultState.name = document.getElementById('consultName').value;
             consultState.email = document.getElementById('consultEmail').value;
             consultState.message = document.getElementById('consultMessage').value;
+
+            // Capture the lead on every Step-1 submit (independent of whether the booking is
+            // completed) → "all leads" sheet. Best-effort, non-blocking: never disrupts the flow.
+            const consultHoneypot = document.getElementById('consultWebsite');
+            if (CONTACT_LEADS_URL && CONTACT_LEADS_URL.indexOf('http') === 0 && !(consultHoneypot && consultHoneypot.value)) {
+                try {
+                    fetch(CONTACT_LEADS_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            name: consultState.name,
+                            email: consultState.email,
+                            message: consultState.message,
+                            source: 'contact_consultation',
+                            timestamp: new Date().toISOString()
+                        })
+                    }).catch(err => console.error('Lead capture failed:', err));
+                } catch (err) {
+                    console.error('Lead capture error:', err);
+                }
+            }
+
             goToConsultStep(2);
         });
 
@@ -8836,6 +8887,16 @@
                     linkedin: formData.get('linkedin') || '',
                     timestamp: new Date().toISOString()
                 };
+
+                // Honeypot: bots fill the hidden field — silently "succeed" without sending anything.
+                if (formData.get('company_website')) {
+                    const successEl = document.getElementById('formSuccess');
+                    if (successEl) {
+                        successEl.classList.add('active');
+                        setTimeout(() => { closeApplyModal(); applyForm.reset(); }, 2500);
+                    }
+                    return;
+                }
                 
                 // Track job application submission
                 trackEvent('job_application_submit', {
@@ -8846,15 +8907,10 @@
                     value: 1
                 });
                 
-                // Check if backend is configured
-                if (APPLY_SCRIPT_URL === 'INSERT_YOUR_APPLY_SCRIPT_URL_HERE') {
-                    console.warn('Apply form backend not configured. Set APPLY_SCRIPT_URL.');
-                    // Show success message anyway for demo
-                    const successEl = document.getElementById('formSuccess');
-                    if (successEl) {
-                        successEl.classList.add('active');
-                        setTimeout(() => closeApplyModal(), 2500);
-                    }
+                // Guard: backend not configured yet (no real success faked).
+                if (!APPLY_SCRIPT_URL || APPLY_SCRIPT_URL === 'PASTE_NEW_APPLY_EXEC_URL_HERE') {
+                    console.error('Apply form backend not configured (applyFormUrl missing).');
+                    alert('The application form is temporarily unavailable. Please email us at admin@workeron.agency.');
                     return;
                 }
                 
@@ -8866,29 +8922,35 @@
                     submitBtn.textContent = 'Sending...';
                 }
                 
-                // Send data to backend
+                // Send to the Apps Script web app. text/plain avoids a CORS preflight on
+                // Apps Script, and (unlike no-cors) lets us READ the JSON response so real
+                // failures surface instead of showing a fake success.
                 fetch(APPLY_SCRIPT_URL, {
                     method: 'POST',
-                    mode: 'no-cors',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'text/plain;charset=utf-8',
                     },
                     body: JSON.stringify(data)
                 })
-                .then(() => {
-                    // Show success message
-                    const successEl = document.getElementById('formSuccess');
-                    if (successEl) {
-                        successEl.classList.add('active');
-                        setTimeout(() => {
-                            closeApplyModal();
-                            applyForm.reset();
-                        }, 2500);
+                .then(res => res.json())
+                .then(result => {
+                    if (result && result.success) {
+                        const successEl = document.getElementById('formSuccess');
+                        if (successEl) {
+                            successEl.classList.add('active');
+                            setTimeout(() => {
+                                closeApplyModal();
+                                applyForm.reset();
+                            }, 2500);
+                        }
+                    } else {
+                        const reason = (result && result.error) ? result.error : 'Unknown error';
+                        alert('We could not submit your application (' + reason + '). Please try again or email us directly at admin@workeron.agency');
                     }
                 })
                 .catch(error => {
                     console.error('Error submitting application:', error);
-                    alert('There was an error submitting your application. Please try again or email us directly at admin@workeron.agency');
+                    alert('Network error while submitting your application. Please try again or email us directly at admin@workeron.agency');
                 })
                 .finally(() => {
                     // Re-enable submit button
